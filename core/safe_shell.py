@@ -269,8 +269,14 @@ class SAFEShell(cmd.Cmd):
             data = {"text": data_str}
 
         try:
-            rid, action = self.store.put(collection, data, record_id=key)
+            rid, action, proposals = self.store.put(collection, data, record_id=key)
             print(f"  {rid} [{action}]")
+            for p in proposals:
+                kind = p.kind.upper()
+                if p.freeze:
+                    print(f"  *** {kind}: {p.reason} — stream frozen, ratify to continue ***")
+                else:
+                    print(f"  [{kind}] {p.reason}")
         except ValueError as e:
             print(f"  Error: {e}")
 
@@ -424,7 +430,7 @@ class SAFEShell(cmd.Cmd):
             data = {"text": data_str}
 
         try:
-            rid, action = self.store.update(collection, key, data)
+            rid, action, _ = self.store.update(collection, key, data)
             print(f"  {rid} [{action}]")
         except ValueError as e:
             print(f"  Error: {e}")
@@ -462,7 +468,7 @@ class SAFEShell(cmd.Cmd):
         context = parts[3] if len(parts) > 3 else ""
 
         try:
-            rid, action = self.store.add_edge(from_id, to_id, relation, context)
+            rid, action, _ = self.store.add_edge(from_id, to_id, relation, context)
             print(f"  {rid} [{action}]")
         except ValueError as e:
             print(f"  Error: {e}")
@@ -686,6 +692,40 @@ class SAFEShell(cmd.Cmd):
                 print(f"  Error: {e}")
         else:
             print("  Usage: rubric [verbose|default|quiet] or rubric <quiet_rad> <flag_rad>")
+
+    def do_proposals(self, arg):
+        """proposals — Show pending proposals (flags waiting for ratification)"""
+        pending = [p for p in self.store.rubric.pending_proposals if p.status == "pending"]
+        if not pending:
+            print("  No pending proposals.")
+            return
+        for i, p in enumerate(pending):
+            freeze = " [FROZEN]" if p.freeze else ""
+            print(f"  {i}: [{p.kind.upper()}]{freeze} {p.reason}")
+            if p.stream:
+                print(f"     stream: {p.stream}  record: {p.record_id}")
+
+    def do_ratify(self, arg):
+        """ratify [index] — Ratify a pending proposal (default: first)"""
+        idx = int(arg.strip()) if arg.strip().isdigit() else 0
+        p = self.store.rubric.ratify(idx)
+        if p:
+            print(f"  Ratified: [{p.kind}] {p.reason}")
+            if p.freeze:
+                print(f"  Stream '{p.stream}' unfrozen.")
+        else:
+            print("  No pending proposal at that index.")
+
+    def do_dismiss(self, arg):
+        """dismiss [index] — Dismiss a pending proposal as false positive (default: first)"""
+        idx = int(arg.strip()) if arg.strip().isdigit() else 0
+        p = self.store.rubric.dismiss(idx)
+        if p:
+            print(f"  Dismissed: [{p.kind}] {p.reason}")
+            if p.freeze:
+                print(f"  Stream '{p.stream}' unfrozen.")
+        else:
+            print("  No pending proposal at that index.")
 
     def do_exit(self, arg):
         """exit — End session, revoke all permissions"""
