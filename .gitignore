@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.db
+store.db
+*.sqlite
+.cache/
+.archive/
+.daemon_pids.json
+.daemon_owner.pid
+credentials.json
+*.env
+keys/
