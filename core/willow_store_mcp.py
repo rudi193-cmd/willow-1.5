@@ -336,6 +336,67 @@ async def list_tools() -> list[types.Tool]:
                 },
             },
         ),
+        types.Tool(
+            name="opus_search",
+            description="Search opus.atoms by title or content.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "default": 20},
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="opus_ingest",
+            description="Write an atom to opus.atoms.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "domain": {"type": "string", "default": "meta"},
+                    "depth": {"type": "integer", "default": 1},
+                    "session_id": {"type": "string"},
+                },
+                "required": ["content"],
+            },
+        ),
+        types.Tool(
+            name="opus_feedback",
+            description="Read opus feedback entries. Omit domain for all.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string"},
+                },
+            },
+        ),
+        types.Tool(
+            name="opus_feedback_write",
+            description="Write an opus feedback entry (domain, principle, source).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string"},
+                    "principle": {"type": "string"},
+                    "source": {"type": "string", "default": "self"},
+                },
+                "required": ["domain", "principle"],
+            },
+        ),
+        types.Tool(
+            name="opus_journal",
+            description="Write a journal entry to opus.journal.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry": {"type": "string"},
+                    "session_id": {"type": "string"},
+                },
+                "required": ["entry"],
+            },
+        ),
     ]
 
 
@@ -528,6 +589,53 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                     limit=arguments.get("limit", 10),
                 )
                 result = {"pending": tasks, "count": len(tasks)}
+
+        elif name == "opus_search":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                results = pg.search_opus(arguments["query"], arguments.get("limit", 20))
+                result = {"results": results, "count": len(results)}
+
+        elif name == "opus_ingest":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                atom_id = pg.ingest_opus_atom(
+                    content=arguments["content"],
+                    domain=arguments.get("domain", "meta"),
+                    depth=arguments.get("depth", 1),
+                    source_session=arguments.get("session_id"),
+                )
+                result = {"id": atom_id, "status": "ingested" if atom_id else "failed"}
+
+        elif name == "opus_feedback":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                entries = pg.opus_feedback(domain=arguments.get("domain"))
+                result = {"feedback": entries, "count": len(entries)}
+
+        elif name == "opus_feedback_write":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                ok = pg.opus_feedback_write(
+                    domain=arguments["domain"],
+                    principle=arguments["principle"],
+                    source=arguments.get("source", "self"),
+                )
+                result = {"status": "written" if ok else "failed"}
+
+        elif name == "opus_journal":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                jid = pg.opus_journal_write(
+                    entry=arguments["entry"],
+                    session_id=arguments.get("session_id"),
+                )
+                result = {"id": jid, "status": "logged" if jid else "failed"}
 
         else:
             result = {"error": f"Unknown tool: {name}"}

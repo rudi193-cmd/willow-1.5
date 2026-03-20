@@ -125,6 +125,92 @@ class PgBridge:
         except Exception:
             return []
 
+    # ── Opus ─────────────────────────────────────────────────────────
+
+    def search_opus(self, query: str, limit: int = 20) -> list[dict]:
+        """Search opus.atoms by title or content."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, title, domain, depth, source_file, created
+                FROM opus.atoms
+                WHERE title ILIKE %s OR content ILIKE %s
+                ORDER BY created DESC
+                LIMIT %s
+            """, (f"%{query}%", f"%{query}%", limit))
+            columns = [d[0] for d in cur.description]
+            results = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            return results
+        except Exception:
+            return []
+
+    def ingest_opus_atom(self, content: str, domain: str = "meta",
+                         depth: int = 1, source_session: str = None) -> Optional[int]:
+        """Write an atom to opus.atoms."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            title = content[:80].split(".")[0] if "." in content[:80] else content[:80]
+            cur.execute("""
+                INSERT INTO opus.atoms (content, title, domain, depth, source_session, source_file)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (content, title, domain, depth, source_session,
+                  f"session:{source_session}" if source_session else None))
+            row = cur.fetchone()
+            cur.close()
+            return row[0] if row else None
+        except Exception:
+            return None
+
+    def opus_feedback(self, domain: str = None) -> list[dict]:
+        """Read opus feedback entries. If domain given, filter by it."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            if domain:
+                cur.execute("SELECT id, domain, principle, source, created FROM opus.feedback WHERE domain = %s ORDER BY created", (domain,))
+            else:
+                cur.execute("SELECT id, domain, principle, source, created FROM opus.feedback ORDER BY created")
+            columns = [d[0] for d in cur.description]
+            results = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            return results
+        except Exception:
+            return []
+
+    def opus_feedback_write(self, domain: str, principle: str, source: str = "self") -> bool:
+        """Write an opus feedback entry."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO opus.feedback (domain, principle, source, created)
+                VALUES (%s, %s, %s, NOW())
+            """, (domain, principle, source))
+            cur.close()
+            return True
+        except Exception:
+            return False
+
+    def opus_journal_write(self, entry: str, session_id: str = None) -> Optional[int]:
+        """Write a journal entry to opus.journal."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO opus.journal (entry, session_id, created_at)
+                VALUES (%s, %s, NOW())
+                RETURNING id
+            """, (entry, session_id))
+            row = cur.fetchone()
+            cur.close()
+            return row[0] if row else None
+        except Exception:
+            return None
+
     # ── Edges ─────────────────────────────────────────────────────────
 
     def edges_for(self, atom_id: int) -> list[dict]:
@@ -324,6 +410,8 @@ class PgBridge:
                 ("edges", "SELECT COUNT(*) FROM knowledge_edges"),
                 ("ganesha_atoms", "SELECT COUNT(*) FROM ganesha.atoms"),
                 ("ganesha_handoffs", "SELECT COUNT(*) FROM ganesha.handoffs"),
+                ("opus_atoms", "SELECT COUNT(*) FROM opus.atoms"),
+                ("opus_feedback", "SELECT COUNT(*) FROM opus.feedback"),
             ]:
                 try:
                     cur.execute(query)
