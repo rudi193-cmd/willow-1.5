@@ -17,13 +17,23 @@ import re
 import sys
 from pathlib import Path
 
-WILLOW_DIRS = (
+# ALL Sean's project/data dirs — not just Willow repos
+MANAGED_DIRS = (
     "/mnt/c/Users/Sean/Documents/GitHub/Willow",
     "/mnt/c/Users/Sean/Documents/GitHub/willow-1.5",
+    "/mnt/c/Users/Sean/Documents/GitHub/die-namic-system",
+    "/mnt/c/Users/Sean/Documents/GitHub/SAFE",
+    "/mnt/c/Users/Sean/Documents/GitHub/Willow1.1",
+    "/mnt/c/Users/Sean/Documents/Willow",
     "/mnt/c/Users/Sean/Willow",
+    "/mnt/c/Users/Sean/My Drive/Willow",
+    "/mnt/c/Users/Sean/gdoc_exports",
+    "/mnt/c/Users/Sean/screenshots",
 )
+# Legacy alias
+WILLOW_DIRS = MANAGED_DIRS
 
-# Patterns that suggest a content/knowledge search
+# Patterns that suggest a content/knowledge search (not code work)
 SEARCH_PATTERNS = re.compile(
     r'\b(grep|rg|find|cat|head|tail|less|ag)\b'
     r'|--include|--glob|-type\s+f'
@@ -32,25 +42,29 @@ SEARCH_PATTERNS = re.compile(
 
 # DB queries that should go through MCP
 DB_SEARCH_PATTERNS = re.compile(
-    r'SELECT.*FROM.*(knowledge|entities|witness|nest_review|pigeon)',
+    r'SELECT.*FROM.*(knowledge|entities|witness|nest_review|pigeon|ganesha)',
     re.IGNORECASE
 )
 
 # Patterns in Grep/Glob that suggest knowledge search vs code search
 KNOWLEDGE_SEARCH_TERMS = re.compile(
     r'(entity|knowledge|witness|review|promote|chrome|drift|corpus'
-    r'|handoff|session|ingest|category|summary)',
+    r'|handoff|session|ingest|category|summary|filed|personal|narrative'
+    r'|reference|legal|media|document|organize|structure|folder|index)',
     re.IGNORECASE
 )
 
 # Operational commands — always allowed, these aren't knowledge searches
 OPERATIONAL = re.compile(
     r'\b(pip|python|python3|node|npm|git|ps|kill|nohup|systemctl|service'
-    r'|mkdir|rm|mv|cp|chmod|chown|ln|touch|ls|curl|wc|echo)\b'
+    r'|mkdir|rm|mv|cp|chmod|chown|ln|touch|curl|wc|echo|diff|du)\b'
     r'|^\s*cd\s'
     # Allow direct python execution (running scripts, not searching)
     r'|python3?\s+-c'
 )
+
+# Bash ls is allowed — it's operational, not a knowledge search
+LS_PATTERN = re.compile(r'^\s*ls\b')
 
 # Code-level searches are fine — searching for function defs, imports, etc.
 CODE_SEARCH = re.compile(
@@ -89,31 +103,34 @@ def main():
 
     if tool == "Bash":
         command = tool_input.get("command", "")
-        targets_willow = any(d in command for d in WILLOW_DIRS)
+        targets_managed = any(d in command for d in MANAGED_DIRS)
 
-        if not targets_willow:
+        if not targets_managed:
             sys.exit(0)
 
-        # Always allow operational commands
+        # Always allow operational commands (git, python, mv, cp, etc.)
         if OPERATIONAL.search(command):
+            sys.exit(0)
+
+        # ls is operational — allow it
+        if LS_PATTERN.search(command):
             sys.exit(0)
 
         # Block DB knowledge queries — MCP is the primary path
         if DB_SEARCH_PATTERNS.search(command):
             print(
-                "BLOCKED: MCP is the primary path for knowledge queries. "
-                "Use mcp__willow__willow_knowledge_search. "
-                "If server is down, gate.py auto-falls back to direct Postgres.",
+                "BLOCKED: Use mcp__willow__willow_knowledge_search or "
+                "store_search, not raw SQL. MCP caches results in local store.",
                 file=sys.stderr,
             )
             sys.exit(2)
 
-        # Block content searches on Willow dirs — MCP is the primary path
+        # Block content searches on managed dirs — MCP + local store first
         if SEARCH_PATTERNS.search(command):
             print(
-                "BLOCKED: MCP is the primary path for Willow searches. "
-                "Use mcp__willow__willow_knowledge_search. "
-                "If server is down, gate.py auto-falls back to direct Postgres.",
+                "BLOCKED: Use mcp__willow__willow_knowledge_search or "
+                "store_search_all first. Cache results with store_put. "
+                "Bash search is the fallback, not the default.",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -122,7 +139,7 @@ def main():
         path = tool_input.get("path", "")
         pattern = tool_input.get("pattern", "")
 
-        if not any(d in path for d in WILLOW_DIRS):
+        if not any(d in path for d in MANAGED_DIRS):
             sys.exit(0)
 
         # Code-level searches (function defs, imports) are always fine
@@ -132,9 +149,9 @@ def main():
         # Knowledge-level searches should go through MCP
         if KNOWLEDGE_SEARCH_TERMS.search(pattern):
             print(
-                f"BLOCKED: '{pattern}' is a knowledge search. "
-                f"MCP is the primary path: use mcp__willow__willow_knowledge_search. "
-                f"If server is down, gate.py auto-falls back to direct Postgres.",
+                f"BLOCKED: '{pattern}' looks like a knowledge search. "
+                f"Use mcp__willow__willow_knowledge_search first, "
+                f"cache with store_put. Grep/Glob is for code, not knowledge.",
                 file=sys.stderr,
             )
             sys.exit(2)

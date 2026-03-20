@@ -343,13 +343,15 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
         if name == "store_put":
-            rid, action = store.put(
+            rid, action, proposals = store.put(
                 arguments["collection"],
                 arguments["record"],
                 record_id=arguments.get("record_id"),
                 deviation=arguments.get("deviation", 0.0),
             )
             result = {"id": rid, "action": action}
+            if proposals:
+                result["proposals"] = [p.to_dict() for p in proposals]
 
         elif name == "store_get":
             result = store.get(arguments["collection"], arguments["record_id"])
@@ -366,26 +368,30 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             result = store.all(arguments["collection"])
 
         elif name == "store_update":
-            rid, action = store.update(
+            rid, action, proposals = store.update(
                 arguments["collection"],
                 arguments["record_id"],
                 arguments["record"],
                 deviation=arguments.get("deviation", 0.0),
             )
             result = {"id": rid, "action": action}
+            if proposals:
+                result["proposals"] = [p.to_dict() for p in proposals]
 
         elif name == "store_delete":
             ok = store.delete(arguments["collection"], arguments["record_id"])
             result = {"deleted": ok}
 
         elif name == "store_add_edge":
-            rid, action = store.add_edge(
+            rid, action, proposals = store.add_edge(
                 arguments["from_id"],
                 arguments["to_id"],
                 arguments["relation"],
                 context=arguments.get("context", ""),
             )
             result = {"id": rid, "action": action}
+            if proposals:
+                result["proposals"] = [p.to_dict() for p in proposals]
 
         elif name == "store_edges_for":
             result = store.edges_for(arguments["record_id"])
@@ -445,6 +451,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 {"name": "ofshield", "trust": "WORKER", "role": "Keeper of the Gate"},
                 {"name": "jeles", "trust": "WORKER", "role": "Librarian, special collections"},
                 {"name": "binder", "trust": "WORKER", "role": "Records, filing"},
+                {"name": "opus", "trust": "ENGINEER", "role": "Post-obstacle builder, Claude Code CLI"},
             ]
             result = {"agents": agents, "count": len(agents)}
 
@@ -474,7 +481,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 atom_id = pg.ingest_ganesha_atom(entry, domain=domain, depth=1)
                 result = {"status": "logged", "atom_id": atom_id}
             else:
-                rid, action = store.put("journal/entries", {"text": entry})
+                rid, action, _ = store.put("journal/entries", {"text": entry})
                 result = {"status": "logged_local", "id": rid}
 
         elif name == "willow_governance":
