@@ -736,6 +736,15 @@ class SAFEShell(cmd.Cmd):
         else:
             print("  No pending proposal at that index.")
 
+    def do_shell(self, arg):
+        """shell <command> — Run a system command inside this SAFE session"""
+        if not arg.strip():
+            print("  Usage: shell <command>")
+            print("  Example: shell claude")
+            return
+        self.session._audit("SHELL_EXEC", arg.split()[0])
+        os.system(arg)
+
     def do_exit(self, arg):
         """exit — End session, revoke all permissions"""
         return True
