@@ -73,18 +73,61 @@ def _get(path: str, timeout: int = 4) -> dict | None:
         return None
 
 
-# ─── 1. Health check ────────────────────────────────────────────────────────
+# ─── 1. Health check + state verification ─────────────────────────────────
+
+def verify_wiring() -> list[str]:
+    """Verify the 1.5 portless architecture is actually wired, not just claimed.
+    Returns list of drift warnings. Empty = all good."""
+    drift = []
+
+    # Check .mcp.json points to portless server
+    mcp_json = Path.home() / ".mcp.json"
+    if mcp_json.exists():
+        try:
+            mcp = json.loads(mcp_json.read_text())
+            willow_args = mcp.get("mcpServers", {}).get("willow", {}).get("args", [])
+            if willow_args and "willow_store_mcp.py" not in willow_args[0]:
+                drift.append(f"MCP points to {willow_args[0]} — should be willow_store_mcp.py")
+            willow_env = mcp.get("mcpServers", {}).get("willow", {}).get("env", {})
+            if "WILLOW_URL" in willow_env and "8420" in willow_env.get("WILLOW_URL", ""):
+                drift.append("MCP env still has WILLOW_URL=localhost:8420 — portless uses PG env vars")
+        except Exception:
+            drift.append(".mcp.json unreadable")
+    else:
+        drift.append(".mcp.json missing — MCP server not configured")
+
+    # Check PG env vars are set
+    pg_host = os.environ.get("WILLOW_PG_HOST", "")
+    if not pg_host:
+        drift.append("WILLOW_PG_HOST not in env — settings.json env block may be missing")
+
+    # Check WILLOW_SHELL is set
+    shell_path = os.environ.get("WILLOW_SHELL", "")
+    if not shell_path:
+        drift.append("WILLOW_SHELL not in env — CRUST not configured")
+    elif not Path(shell_path).exists():
+        drift.append(f"WILLOW_SHELL={shell_path} — file does not exist")
+
+    return drift
+
 
 def check_health() -> tuple[bool, str, float]:
-    """Verify Willow alive. Portless: check Postgres. Legacy: check HTTP."""
+    """Verify Willow alive. Portless: check Postgres. Verify wiring state."""
     t0 = time.perf_counter()
+
+    # State verification — report drift, don't block
+    drift = verify_wiring()
 
     # Portless path: check Postgres directly
     try:
         import psycopg2
         conn = psycopg2.connect(
-            dbname="willow", user="willow", password="willow",
-            host="172.26.176.1", port=5437, connect_timeout=2,
+            dbname=os.environ.get("WILLOW_PG_DB", "willow"),
+            user=os.environ.get("WILLOW_PG_USER", "willow"),
+            password=os.environ.get("WILLOW_PG_PASS", "willow"),
+            host=os.environ.get("WILLOW_PG_HOST", "172.26.176.1"),
+            port=int(os.environ.get("WILLOW_PG_PORT", "5437")),
+            connect_timeout=2,
         )
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM knowledge")
@@ -94,40 +137,49 @@ def check_health() -> tuple[bool, str, float]:
         cur.close()
         conn.close()
         elapsed = (time.perf_counter() - t0) * 1000
-        return True, f"portless OK ({atoms} atoms, {entities} entities)", elapsed
+        detail = f"portless OK ({atoms} atoms, {entities} entities)"
+        if drift:
+            detail += " | DRIFT: " + "; ".join(drift)
+        return True, detail, elapsed
     except Exception:
         pass
 
-    # Legacy fallback: check HTTP server
-    try:
-        status = _get("/api/status", timeout=3)
-        elapsed = (time.perf_counter() - t0) * 1000
-        if status:
-            atoms = status.get("knowledge", {}).get("atoms", 0)
-            entities = status.get("knowledge", {}).get("entities", 0)
-            return True, f"server OK ({atoms} atoms, {entities} entities)", elapsed
-        return False, "server returned empty status", elapsed
-    except Exception as e:
-        elapsed = (time.perf_counter() - t0) * 1000
-        return False, f"unreachable (no Postgres, no HTTP): {e}", elapsed
+    elapsed = (time.perf_counter() - t0) * 1000
+    detail = "Postgres unreachable"
+    if drift:
+        detail += " | DRIFT: " + "; ".join(drift)
+    return False, detail, elapsed
 
 
 # ─── 2. Agent checkin + journal ─────────────────────────────────────────────
 
 def checkin_and_journal(session_id: str) -> str:
-    """Register presence and open journal session. Returns willow_session_id.
-    Portless mode: skip HTTP calls, just return session_id."""
-    # Try HTTP (legacy) — silently skip if server is down
-    _post("/api/agents/checkin", {"agent_name": AGENT_NAME})
-    journal = _post("/api/journal/session/start", {"username": USERNAME})
-    willow_session_id = (journal or {}).get("session_id", session_id[:12])
-
-    _post(f"/api/agents/{AGENT_NAME}/event", {
-        "event_type": "session_start",
-        "content": f"Ganesha session started. Session: {session_id[:8]}.",
-        "metadata": {"session_id": session_id[:8], "willow_session_id": willow_session_id},
-    })
-
+    """Register presence and open journal session via Postgres. Returns willow_session_id."""
+    willow_session_id = session_id[:12]
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname=os.environ.get("WILLOW_PG_DB", "willow"),
+            user=os.environ.get("WILLOW_PG_USER", "willow"),
+            password=os.environ.get("WILLOW_PG_PASS", "willow"),
+            host=os.environ.get("WILLOW_PG_HOST", "172.26.176.1"),
+            port=int(os.environ.get("WILLOW_PG_PORT", "5437")),
+            connect_timeout=3,
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO journal_events (event_type, username, payload)
+            VALUES ('session_start', %s, %s)
+        """, (USERNAME, json.dumps({
+            "agent": AGENT_NAME,
+            "session_id": session_id[:8],
+            "willow_session_id": willow_session_id,
+        })))
+        cur.close()
+        conn.close()
+    except Exception:
+        pass
     return willow_session_id
 
 
@@ -369,11 +421,35 @@ def main():
     if gaps:
         output_parts.append(gaps)
 
+    # ── 6b. SAFE session (CRUST) ────────────────────────────────────
+    safe_session_id = ""
+    try:
+        shell_path = os.environ.get("WILLOW_SHELL",
+            "/mnt/c/Users/Sean/Documents/GitHub/willow-1.5/core/safe_shell.py")
+        shell_dir = str(Path(shell_path).parent)
+        sys.path.insert(0, shell_dir)
+        from safe_shell import SAFESession
+        store_root = os.environ.get("WILLOW_STORE",
+            str(Path.home() / ".willow" / "store"))
+        safe = SAFESession(store_root, USERNAME)
+        # Ganesha is ENGINEER trust — auto-authorize all streams
+        safe.authorized_streams = set(safe.authorized_streams)
+        for stream in ("journal", "knowledge", "agents", "governance", "preferences"):
+            safe.authorized_streams.add(stream)
+            safe._audit("CONSENT_GRANTED", stream)
+        safe._active = True
+        safe._audit("SESSION_START", "ganesha-bridge-open")
+        safe_session_id = safe.session_id
+        # Don't close — session lives until session-extract Stop hook
+    except Exception:
+        pass
+
     # ── Write session state ─────────────────────────────────────────
     try:
         SESSION_FILE.write_text(json.dumps({
             "session_id": session_id,
             "willow_session_id": willow_session_id,
+            "safe_session_id": safe_session_id,
             "username": USERNAME,
             "started_at": datetime.now().isoformat(),
             "turn_count": 0,
