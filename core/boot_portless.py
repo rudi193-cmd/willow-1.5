@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-boot_portless.py — Pre-flight check for portless Willow
+boot_portless.py — VINE (1.5)
+================================
+V — Verify
+I — Initialize
+N — Navigate
+E — Establish
+
+Pre-flight and connection layer.
+1.4 VINE tracked relationships. 1.5 VINE establishes them — boot sequence, health checks, connection verification.
 
 No port needed. Checks:
 1. WillowStore root accessible (required)

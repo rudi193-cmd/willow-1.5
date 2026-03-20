@@ -1,7 +1,15 @@
 """
-willow_store_mcp.py — Unified MCP bridge (portless)
+willow_store_mcp.py — RINGS (1.5)
+====================================
+R — Ring
+I — Integration
+N — Node
+G — Gateway
+S — Service
 
-No ports. No server. stdin/stdout protocol only.
+Node ring registry and query routing. The protocol layer.
+1.4 RINGS enforced pigeon payload contract. 1.5 RINGS is the MCP bridge — stdin/stdout, no ports.
+
 Bridges BOTH local WillowStore (SQLite) AND Willow Postgres.
 
 Local tools: store_put, store_get, store_search, store_search_all, etc.

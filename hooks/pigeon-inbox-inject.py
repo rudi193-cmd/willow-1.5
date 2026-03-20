@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-UserPromptSubmit hook — injects pending Pigeon messages into Ganesha's context.
+pigeon-inbox-inject.py — PIGEON (1.5)
+
+Message bus. The carrier.
+1.4 PIGEON ingested files from Nest through a scan pipeline. 1.5 PIGEON injects pending messages into agent context.
+
 Reads /tmp/ganesha_pending.json, prepends to prompt, clears the file.
 """
 

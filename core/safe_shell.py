@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-safe_shell.py — SAFE Shell: Session-Authorized, Fully Explicit
+safe_shell.py — CROWN (1.5)
+==============================
+C — Compose
+R — Release
+O — Output
+W — Witness
+N — Nurture
+
+Output layer. The launch benchmark.
+1.4 CROWN composed responses and released to SAFE. 1.5 CROWN IS the shell — consent is the interface.
 
 A login shell where the OS IS the consent model.
 No ports. No daemons. No server.

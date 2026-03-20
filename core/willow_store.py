@@ -1,7 +1,15 @@
 """
-willow_store.py — Portless Willow Storage (Merged)
-Sean's portless architecture + Ganesha's security hardening.
+willow_store.py — SOIL (1.5)
+==============================
+S — Store
+O — Organize
+I — Index
+L — Layer
 
+Portless storage. The foundation layer.
+1.4 SOIL watched the Nest for files. 1.5 SOIL IS the storage — filesystem service, not watcher.
+
+Sean's portless architecture + Ganesha's security hardening.
 Service listens on filesystem, not network.
 Core logic stays air-gapped.
 Translation layer (MCP, CF Worker) handles external when needed.

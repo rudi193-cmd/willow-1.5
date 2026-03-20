@@ -19,7 +19,7 @@ from pathlib import Path
 
 WILLOW_DIRS = (
     "/mnt/c/Users/Sean/Documents/GitHub/Willow",
-    "/mnt/c/Users/Sean/Documents/GitHub/willow-1.4",
+    "/mnt/c/Users/Sean/Documents/GitHub/willow-1.5",
     "/mnt/c/Users/Sean/Willow",
 )
 

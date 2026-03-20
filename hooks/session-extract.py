@@ -41,6 +41,14 @@ TRUNC_CHARS  = 450  # per-turn truncation
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
 def _post(path: str, payload: dict) -> dict | None:
+    """Post to Willow. Portless: direct Postgres, HTTP legacy fallback."""
+    # Knowledge ingest → direct Postgres
+    if "/knowledge/ingest" in path:
+        return _ingest_postgres(payload)
+    # Journal/agent events → Postgres
+    if "/journal/" in path or "/agents/" in path or "/pigeon/" in path:
+        return _log_event_postgres(path, payload)
+    # Legacy HTTP fallback
     try:
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
@@ -49,6 +57,60 @@ def _post(path: str, payload: dict) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=5) as r:
             return json.loads(r.read())
+    except Exception:
+        return None
+
+
+def _ingest_postgres(payload: dict) -> dict | None:
+    """Direct knowledge ingest via Postgres."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=3
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO knowledge (title, content_text, category, source_type, tags, filename)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+        """, (
+            payload.get("filename", "session-handoff"),
+            payload.get("content_text", ""),
+            payload.get("category", "narrative"),
+            payload.get("provider", "session-extract-hook"),
+            payload.get("tags", []),
+            payload.get("filename", ""),
+        ))
+        cur.close()
+        conn.close()
+        return {"status": "ingested"}
+    except Exception:
+        return None
+
+
+def _log_event_postgres(path: str, payload: dict) -> dict | None:
+    """Log events to Postgres (fire-and-forget)."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=3
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO journal_events (event_type, username, payload)
+            VALUES (%s, %s, %s)
+        """, (
+            payload.get("event_type", path),
+            payload.get("username", "Sweet-Pea-Rudi19"),
+            json.dumps(payload),
+        ))
+        cur.close()
+        conn.close()
+        return {"status": "logged"}
     except Exception:
         return None
 

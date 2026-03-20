@@ -1,9 +1,18 @@
 """
-pg_bridge.py — Bridge to Willow's Postgres knowledge graph
+pg_bridge.py — LOAM (1.5)
+===========================
+L — Layer
+O — Of
+A — Accumulated
+M — Memory
+
+Knowledge retrieval from Willow's Postgres graph.
+1.4 LOAM was SQLite FTS5. 1.5 LOAM is Postgres direct — portless.
+
+Retrieval cascade:
+  local WillowStore → Postgres (this) → fleet generation
 
 Optional dependency. Shell and MCP server work without it (standalone mode).
-When available, provides the second tier of the retrieval cascade:
-  local WillowStore (SQLite) → Postgres (this) → fleet generation
 """
 
 import os

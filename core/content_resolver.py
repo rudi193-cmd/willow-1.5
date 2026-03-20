@@ -1,5 +1,13 @@
 """
-content_resolver.py — Resolve content from source pointers
+content_resolver.py — LEAF (1.5)
+==================================
+L — Library
+E — External
+A — Archive
+F — Fetch
+
+Verified source retrieval. The research layer.
+1.4 LEAF reached external APIs (Wikipedia). 1.5 LEAF resolves source pointers.
 
 Atoms are card catalog entries: title, source_type, source_id.
 Content lives at the source. This module fetches it on demand.

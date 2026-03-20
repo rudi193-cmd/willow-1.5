@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
-Governance Precedent Lookup
+precedent.py — GRAFT (1.5)
+=============================
+G — Governance
+R — Ratification
+A — Approval
+F — Flow
+T — Tracking
 
-Queries the settled governance ledger (.applied files) before halting for
+Governance gate. The trust layer.
+1.4 GRAFT was SQLite task management. 1.5 GRAFT is precedent-based governance — Postgres proposals, auto-approval by pattern match.
+
+Queries the settled governance ledger before halting for
 human ratification. If the proposed action matches a prior ratified decision
 by type, trust level, and pattern similarity, returns AUTO_APPROVE.
 

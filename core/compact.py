@@ -1,7 +1,15 @@
 """
-compact.py — BASE 17 Compact Context Store
+compact.py — PRISM (1.5)
+===========================
+P — Prove
+R — Reference
+I — Inspect
+S — Source
+M — Match
 
-Pre-shared context by reference, not inline.
+Verification and reference layer.
+1.4 PRISM verified claims against sources. 1.5 PRISM is the compact context system — pre-shared reference by ID, not inline.
+
 Agents register reusable context blocks under 5-char BASE 17 IDs.
 Prompts reference the ID instead of embedding full content.
 

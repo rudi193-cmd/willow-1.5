@@ -119,21 +119,28 @@ def _write_to_ganesha(name, mem_type, content, source_file, session_id):
 
 
 def _write_to_willow(name, content, mem_type):
-    """Write to Willow knowledge graph via MCP ingest endpoint."""
+    """Write to Willow knowledge graph. Portless: direct Postgres insert."""
     try:
-        payload = json.dumps({
-            "title": f"Ganesha Memory: {name}",
-            "content": content,
-            "category": f"ganesha-memory|{mem_type}",
-            "tags": ["ganesha", "memory", mem_type]
-        }).encode()
-        req = urllib.request.Request(
-            f"{WILLOW_URL}/api/knowledge/ingest",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=3
         )
-        urllib.request.urlopen(req, timeout=5)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO knowledge (title, content_text, category, source_type, tags)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+        """, (
+            f"Ganesha Memory: {name}",
+            content,
+            f"ganesha-memory|{mem_type}",
+            "agent",
+            ["ganesha", "memory", mem_type],
+        ))
+        cur.close()
+        conn.close()
         return True
     except Exception:
         return False

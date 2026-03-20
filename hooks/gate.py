@@ -56,6 +56,7 @@ SHIVA_DB     = Path("/mnt/c/Users/Sean/Documents/GitHub/Willow/shiva_memory/shiv
 # ─── HTTP helpers ──────────────────────────────────────────────────────────────
 
 def _get(path: str) -> dict | None:
+    """GET from Willow. HTTP legacy — most paths now go through Postgres."""
     try:
         with urllib.request.urlopen(f"{WILLOW_URL}{path}", timeout=4) as r:
             return json.loads(r.read())
@@ -64,6 +65,9 @@ def _get(path: str) -> dict | None:
 
 
 def _post(path: str, payload: dict) -> dict | None:
+    """POST to Willow. Portless: Postgres first, HTTP fallback."""
+    if "/journal/" in path or "/feedback/" in path or "/agents/" in path:
+        return _log_event_postgres(path, payload)
     try:
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
@@ -72,6 +76,31 @@ def _post(path: str, payload: dict) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=4) as r:
             return json.loads(r.read())
+    except Exception:
+        return None
+
+
+def _log_event_postgres(path: str, payload: dict) -> dict | None:
+    """Fire-and-forget event logging to Postgres."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=2
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO journal_events (event_type, username, payload)
+            VALUES (%s, %s, %s)
+        """, (
+            payload.get("event_type", path),
+            payload.get("username", "Sweet-Pea-Rudi19"),
+            json.dumps(payload),
+        ))
+        cur.close()
+        conn.close()
+        return {"status": "logged"}
     except Exception:
         return None
 
@@ -498,12 +527,12 @@ def main():
     # ── JELES: Pull the right thing ───────────────────────────────────
     intent = extract_intent(prompt, keywords)
 
-    # MCP first → Postgres fallback → SQLite last resort
-    results = query_willow_mcp(intent, keywords)
+    # Postgres first (portless) → HTTP fallback → SQLite last resort
+    corrections = query_shiva_postgres(keywords)
+    corpus = query_willow_postgres(intent, keywords)
+    results = corrections + corpus
     if not results:
-        corrections = query_shiva_postgres(keywords)
-        corpus = query_willow_postgres(intent, keywords)
-        results = corrections + corpus
+        results = query_willow_mcp(intent, keywords)
     if not results:
         corrections = query_shiva_sqlite(keywords)
         corpus = query_willow_sqlite(keywords, intent)

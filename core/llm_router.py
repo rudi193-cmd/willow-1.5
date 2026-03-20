@@ -1,14 +1,18 @@
 """
-LLM ROUTER v2.0 (JSON LOADER)
-Routes prompts based on cost (Free -> Cheap -> Paid).
-NOW INCLUDES: Native support for loading keys from 'credentials.json'.
+llm_router.py — PULSE (1.5)
+==============================
+P — Process
+U — Upstream
+L — Load
+S — Schedule
+E — Execute
 
-Logic:
-1. Load keys from credentials.json
-2. Check provider availability.
-3. If Tier 1 (Free) is available, use it.
-4. Else, check Tier 2 (Cheap).
-5. Else, check Tier 3 (Paid).
+Fleet routing and execution. The engine.
+1.4 PULSE was the background task daemon. 1.5 PULSE routes prompts across 14 free providers.
+
+Routes prompts based on cost (Free -> Cheap -> Paid).
+Loads keys from credentials.json. Checks provider availability.
+Tier 1 (Free) → Tier 2 (Cheap) → Tier 3 (Paid).
 """
 
 import os

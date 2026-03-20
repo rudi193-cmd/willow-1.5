@@ -6,7 +6,7 @@ Fires on first message of each session. The bridge between
 the last session and this one.
 
 Boot sequence:
-  1. Health check — server alive, MCP responding, port 8420 clear
+  1. Health check — Postgres alive (portless), HTTP legacy fallback
   2. Agent checkin + journal session open
   3. Handoff recovery from knowledge DB (NOT raw files)
   4. BASE 17 index pre-warm — batch load to /tmp cache (atomic write)
@@ -45,7 +45,7 @@ WILLOW_URL   = "http://localhost:8420"
 USERNAME     = "Sweet-Pea-Rudi19"
 AGENT_NAME   = "ganesha"
 SESSION_FILE = Path(f"/tmp/willow-session-{AGENT_NAME}.json")
-NEST_DIR     = Path("/mnt/c/Users/Sean/Willow/Nest")
+NEST_DIR     = Path("/mnt/c/Users/Sean/My Drive/Willow/Auth Users/ganesha/Nest")
 COMPACT_CACHE = Path("/tmp/willow-compact-index.json")
 SERVER_FLAG  = Path("/tmp/willow-server-status.json")
 MAX_HANDOFF_CHARS = 4000

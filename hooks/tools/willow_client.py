@@ -25,7 +25,9 @@ _PG_PARAMS = {
 
 
 def server_ok() -> bool:
-    """Check if HTTP server is up. Fast — 1s timeout."""
+    """Check if Willow is reachable. Portless: Postgres first, HTTP legacy fallback."""
+    if pg_ok():
+        return True
     try:
         with urllib.request.urlopen(f"{WILLOW_URL}/api/health", timeout=1) as r:
             return r.status == 200

@@ -79,6 +79,14 @@ def classify_path(file_path: str) -> str:
 # ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 def _post(path: str, payload: dict) -> dict | None:
+    """POST to Willow. Tries Postgres governance table first, HTTP legacy fallback."""
+    # For governance proposals, write directly to Postgres
+    if path == "/api/governance/propose":
+        return _propose_via_postgres(payload)
+    # For journal/agent events, write to Postgres event log
+    if "/journal/" in path or "/agents/" in path:
+        return _log_event_postgres(path, payload)
+    # Legacy HTTP fallback
     try:
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
@@ -87,6 +95,66 @@ def _post(path: str, payload: dict) -> dict | None:
         )
         with urllib.request.urlopen(req, timeout=5) as r:
             return json.loads(r.read())
+    except Exception:
+        return None
+
+
+def _propose_via_postgres(payload: dict) -> dict | None:
+    """Write governance proposal directly to Postgres."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=3
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO governance_proposals
+            (title, proposer, summary, file_path, diff, proposal_type, trust_level, risk_level, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            RETURNING id, status
+        """, (
+            payload.get("title", ""),
+            payload.get("proposer", "ganesha"),
+            payload.get("summary", ""),
+            payload.get("file_path", ""),
+            payload.get("diff", ""),
+            payload.get("proposal_type", "Code Enhancement"),
+            payload.get("trust_level", "ENGINEER"),
+            payload.get("risk_level", "LOW"),
+        ))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            return {"status": "pending", "commit_id": str(row[0])}
+    except Exception:
+        pass
+    return None
+
+
+def _log_event_postgres(path: str, payload: dict) -> dict | None:
+    """Log journal/agent events to Postgres (fire-and-forget)."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            dbname="willow", user="willow", password="willow",
+            host="172.26.176.1", port=5437, connect_timeout=3
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO journal_events (event_type, username, payload)
+            VALUES (%s, %s, %s)
+        """, (
+            payload.get("event_type", path),
+            payload.get("username", "Sweet-Pea-Rudi19"),
+            json.dumps(payload),
+        ))
+        cur.close()
+        conn.close()
+        return {"status": "logged"}
     except Exception:
         return None
 
@@ -211,7 +279,7 @@ def main():
                 f"[GOVERNANCE GATE] T1 change requires ratification.\n"
                 f"  File:      {file_path}\n"
                 f"  Proposal:  {commit_id}\n"
-                f"  Approve:   http://localhost:8420/governance\n"
+                f"  Approve:   psql -U willow -h 172.26.176.1 -p 5437 willow -c \"UPDATE governance_proposals SET status='approved' WHERE id={commit_id}\"\n"
                 f"  Then retry this edit.",
                 file=sys.stderr
             )

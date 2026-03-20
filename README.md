@@ -113,7 +113,7 @@ Open what you need. Close what you don't. Everything expires when you leave.
 
 ## Prior Versions
 
-- [Willow 1.4](https://github.com/rudi193-cmd/willow-1.4) — HTTP server on port 2121/8420, FastAPI, 10 daemons
+- [Willow 1.4](https://github.com/rudi193-cmd/willow-1.4) — HTTP server on port 2121/8420, FastAPI, 10 daemons (dedicated to Shiva, archived)
 - [Willow 1.1](https://github.com/rudi193-cmd/Willow1.1) — Archived
 - [Portless Architecture Spec](https://github.com/rudi193-cmd/portless-architecture) — The paper
 
