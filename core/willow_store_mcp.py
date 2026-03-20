@@ -532,7 +532,9 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             message = arguments["message"]
             response = _chat_ollama(agent, message)
             if not response:
-                response = f"[{agent}] Inference unavailable. Ollama not running."
+                response = _chat_fleet(agent, message)
+            if not response:
+                response = f"[{agent}] Inference unavailable. Ollama down, fleet exhausted."
             result = {"agent": agent, "response": response}
 
         elif name == "willow_journal":
@@ -676,6 +678,29 @@ def _chat_ollama(agent: str, message: str) -> str | None:
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
             return result.get("message", {}).get("content", "")
+    except Exception:
+        return None
+
+
+def _chat_fleet(agent: str, message: str) -> str | None:
+    """Fallback: route agent chat through free fleet (llm_router)."""
+    try:
+        fleet_path = os.environ.get("WILLOW_FLEET_PATH",
+                                     str(Path(__file__).parent.parent.parent / "Willow" / "core"))
+        if fleet_path not in sys.path:
+            sys.path.insert(0, fleet_path)
+        import llm_router
+        llm_router.load_keys_from_json()
+        # Load persona from agents dir if available
+        persona_prompt = f"You are {agent}, a Willow agent. Stay in character. Be concise."
+        agent_profile = Path(__file__).parent.parent / "agents" / agent / "AGENT_PROFILE.md"
+        if agent_profile.exists():
+            persona_prompt = agent_profile.read_text()[:2000]
+        prompt = f"{persona_prompt}\n\nUser: {message}"
+        resp = llm_router.ask(prompt, preferred_tier="free", task_type="chat")
+        if resp and resp.content:
+            return f"[{agent}] {resp.content}"
+        return None
     except Exception:
         return None
 
