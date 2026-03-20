@@ -191,6 +191,125 @@ class PgBridge:
         except Exception:
             return None
 
+    # ── Task Queue ──────────────────────────────────────────────────────
+
+    def submit_task(self, task: str, submitted_by: str = "ganesha",
+                    agent: str = "kart") -> Optional[str]:
+        """Submit a task to the queue. Returns task_id."""
+        import hashlib, time
+        task_id = hashlib.sha256(f"{task}{time.time()}".encode()).hexdigest()[:12]
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO kart_task_queue (task_id, submitted_by, agent, task)
+                VALUES (%s, %s, %s, %s)
+                RETURNING task_id
+            """, (task_id, submitted_by, agent, task))
+            row = cur.fetchone()
+            cur.close()
+            return row[0] if row else None
+        except Exception:
+            return None
+
+    def task_status(self, task_id: str) -> Optional[dict]:
+        """Get task status by task_id."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT task_id, submitted_by, agent, task, status, result,
+                       steps, created_at, started_at, completed_at
+                FROM kart_task_queue WHERE task_id = %s
+            """, (task_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                return None
+            columns = [d[0] for d in cur.description]
+            cur.close()
+            return dict(zip(columns, row))
+        except Exception:
+            return None
+
+    def claim_task(self, agent: str = "kart") -> Optional[dict]:
+        """Claim the oldest pending task for an agent. Returns task or None."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE kart_task_queue
+                SET status = 'running', started_at = NOW()
+                WHERE id = (
+                    SELECT id FROM kart_task_queue
+                    WHERE status = 'pending' AND agent = %s
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING task_id, task, submitted_by
+            """, (agent,))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                return None
+            columns = [d[0] for d in cur.description]
+            cur.close()
+            return dict(zip(columns, row))
+        except Exception:
+            return None
+
+    def complete_task(self, task_id: str, result: dict, steps: int = 0) -> bool:
+        """Mark a task as complete with result."""
+        import json as _json
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE kart_task_queue
+                SET status = 'complete', result = %s, steps = %s, completed_at = NOW()
+                WHERE task_id = %s
+            """, (_json.dumps(result), steps, task_id))
+            cur.close()
+            return True
+        except Exception:
+            return False
+
+    def fail_task(self, task_id: str, error: str) -> bool:
+        """Mark a task as failed."""
+        import json as _json
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE kart_task_queue
+                SET status = 'failed', result = %s, completed_at = NOW()
+                WHERE task_id = %s
+            """, (_json.dumps({"error": error}), task_id))
+            cur.close()
+            return True
+        except Exception:
+            return False
+
+    def pending_tasks(self, agent: str = "kart", limit: int = 10) -> list[dict]:
+        """List pending tasks for an agent."""
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT task_id, task, submitted_by, created_at
+                FROM kart_task_queue
+                WHERE status = 'pending' AND agent = %s
+                ORDER BY created_at ASC
+                LIMIT %s
+            """, (agent, limit))
+            columns = [d[0] for d in cur.description]
+            results = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            return results
+        except Exception:
+            return []
+
     # ── Stats ─────────────────────────────────────────────────────────
 
     def stats(self) -> dict:

@@ -301,6 +301,41 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["message"],
             },
         ),
+        # ── Task Queue (Kart dispatch) ────────────────────────────────
+        types.Tool(
+            name="willow_task_submit",
+            description="Submit a task to Kart's execution queue. Returns task_id for polling.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Task description for Kart to execute"},
+                    "agent": {"type": "string", "default": "kart", "description": "Target agent (default: kart)"},
+                },
+                "required": ["task"],
+            },
+        ),
+        types.Tool(
+            name="willow_task_status",
+            description="Check status of a submitted task by task_id.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                },
+                "required": ["task_id"],
+            },
+        ),
+        types.Tool(
+            name="willow_task_list",
+            description="List pending tasks in the queue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent": {"type": "string", "default": "kart"},
+                    "limit": {"type": "integer", "default": 10},
+                },
+            },
+        ),
     ]
 
 
@@ -454,6 +489,38 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
         elif name == "willow_route":
             result = {"routed_to": "willow", "note": "Message routing defaults to willow in portless mode"}
+
+        # ── Task Queue handlers ────────────────────────────────────────
+        elif name == "willow_task_submit":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                task_id = pg.submit_task(
+                    task=arguments["task"],
+                    submitted_by="ganesha",
+                    agent=arguments.get("agent", "kart"),
+                )
+                if task_id:
+                    result = {"task_id": task_id, "status": "pending", "agent": arguments.get("agent", "kart")}
+                else:
+                    result = {"error": "submit_failed"}
+
+        elif name == "willow_task_status":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                task = pg.task_status(arguments["task_id"])
+                result = task if task else {"error": "not_found", "task_id": arguments["task_id"]}
+
+        elif name == "willow_task_list":
+            if not pg:
+                result = {"error": "not_available", "reason": "Postgres not connected"}
+            else:
+                tasks = pg.pending_tasks(
+                    agent=arguments.get("agent", "kart"),
+                    limit=arguments.get("limit", 10),
+                )
+                result = {"pending": tasks, "count": len(tasks)}
 
         else:
             result = {"error": f"Unknown tool: {name}"}
